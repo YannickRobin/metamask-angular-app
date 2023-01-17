@@ -8,8 +8,9 @@ describe('SendTransactionMetamaskComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      declarations: [ SendTransactionMetamaskComponent ]
-    })
+    declarations: [SendTransactionMetamaskComponent],
+    teardown: { destroyAfterEach: false }
+})
     .compileComponents();
   });
 

@@ -1,190 +1,274 @@
-import { Injectable } from "@angular/core";
-import { HttpClient } from '@angular/common/http';
-import { HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams } from "@angular/common/http";
+import { Injectable, OnDestroy } from "@angular/core";
 import { ethers } from "ethers";
-import { environment } from 'src/environments/environment';
+import { BehaviorSubject, from, Observable } from "rxjs";
+import { map } from "rxjs/operators";
 
-declare var window: any
+declare var window: any;
+
+interface Nonce {
+  nonce?: string;
+}
+
+export interface VerificationResponse {
+  valid?: boolean;
+  payload?: any;
+}
+
+export abstract class BackendUrlProvider {
+  abstract getBackendUrl(path: string): string;
+}
+
+export abstract class AuthStorage {
+  abstract set(payload: any): void;
+  abstract get$(): Observable<any>;
+}
+
+const storageKey = "ethereumAccount";
 
 @Injectable({
-  providedIn: "root"
+  providedIn: "root",
 })
-export class MetaMaskService {
+export class MetaMaskService implements OnDestroy {
+  protected provider?: ethers.providers.Web3Provider;
 
-  apiURL = "";
-  errorMessage: string = "";
-  isMetaMaskInstalled: boolean;
-  networkVersion:number;
-  metaMaskAddress:string = "";
-  isAuthenticatedWithMetaMask: boolean = false;  
-  txhash: string = "";
-  isTransactionSuccessful: boolean = false;
+  protected _network: ethers.providers.Network | undefined = undefined;
+  protected _network$ = new BehaviorSubject<
+    ethers.providers.Network | undefined
+  >(this.network);
 
+  protected _account$ = new BehaviorSubject<string | null>(this.account);
 
-  constructor(private httpClient: HttpClient)
-  {
-    this.apiURL = environment.easyRestURL;
-    this.isMetaMaskInstalled = false;
-    this.networkVersion=1;    
-    this.clearContext();
+  protected _isAuthenticated$ = from(this.authStorage.get$()).pipe(
+    map((payload) => payload !== undefined)
+  );
 
-    var isMetaMaskInstalled = this.checkMetaMaskInstalled();
-    this.setIsMetaMaskInstalled(isMetaMaskInstalled);    
+  get ethereum(): any {
+    return window.ethereum;
   }
 
-  clearContext() {
-    this.errorMessage = "";
-    this.metaMaskAddress = "";
-    this.isAuthenticatedWithMetaMask = false;
-    this.txhash = "";
-    this.isTransactionSuccessful = false;     
-  }  
-
-  getErrorMessage() {
-    return this.errorMessage;
+  get isEthereumInstalled(): boolean {
+    return typeof window.ethereum !== "undefined";
   }
 
-  setErrorMessage(errorMessage: string) {
-    this.errorMessage = errorMessage;
+  get isMetaMask(): boolean {
+    return this.isEthereumInstalled && (this.ethereum.isMetaMask ?? false);
   }
 
-  getIsMetaMaskInstalled() {
-    return this.isMetaMaskInstalled;
+  protected get network(): ethers.providers.Network | undefined {
+    return this._network;
   }
 
-  setIsMetaMaskInstalled(isMetaMaskInstalled: boolean) {  
-    this.isMetaMaskInstalled = isMetaMaskInstalled;
+  protected set network(network: ethers.providers.Network | undefined) {
+    this._network = network;
+    this._network$.next(network);
   }
 
-  getNetworkVersion() {
-    return this.networkVersion;
-  }  
-
-  setNetworkVersion(networkVersion: number) {
-    this.networkVersion = networkVersion;
+  get network$(): Observable<ethers.providers.Network | undefined> {
+    return this._network$.asObservable();
   }
 
-  getMetaMaskAddress() {
-    return this.metaMaskAddress;
-  }  
-
-  setMetaMaskAddress(metaMaskAddress: string) {
-    this.metaMaskAddress = metaMaskAddress;
+  protected get account(): string | null {
+    return localStorage.getItem(storageKey);
   }
 
-  getIsAuthenticatedWithMetaMask() {
-    return this.isAuthenticatedWithMetaMask;
+  protected set account(account: string | null) {
+    if (this.account !== account) {
+      if (account != null) localStorage.setItem(storageKey, account);
+      else localStorage.removeItem(storageKey);
+      this._account$.next(account);
+      this.authStorage.set(undefined);
+    }
   }
 
-  setIsAuthenticatedWithMetaMask(isAuthenticatedWithMetaMask: boolean) {  
-    this.isAuthenticatedWithMetaMask = isAuthenticatedWithMetaMask;
-  }  
-
-  getTxhash() {
-    return this.txhash;
-  }  
-
-  setTxhash(txhash: string) {
-    this.txhash = txhash;
+  get account$(): Observable<string | null> {
+    return this._account$.asObservable();
   }
 
-  getIsTransactionSuccessful() {
-    return this.isTransactionSuccessful;
+  get isConnected(): boolean {
+    return this.account !== undefined && this.account !== null;
   }
-  
-  setIsTransactionSuccessful(isTransactionSuccessful: boolean) {
-    this.isTransactionSuccessful = isTransactionSuccessful;
-  }  
 
-  checkMetaMaskInstalled() {
-    return window.ethereum != null && window.ethereum.isMetaMask;
-  };
+  get isConnected$(): Observable<boolean> {
+    return this.account$.pipe(
+      map((account) => account !== undefined && account !== null)
+    );
+  }
 
-  requestMetaMaskAddress = async () => {
-    const address = await window.ethereum.request({ method: "eth_accounts" });
-    return address;
-  };
+  get isAuthenticated$(): Observable<boolean> {
+    return this._isAuthenticated$;
+  }
 
-  generateNonce = async () => {
-    let params = new HttpParams();
-    const options = { params: params};
-    let nonce = await this.httpClient.get<any>(this.apiURL + '/metamask/generatenonce',).toPromise();
+  constructor(
+    protected httpClient: HttpClient,
+    protected backendUrlProvider: BackendUrlProvider,
+    protected authStorage: AuthStorage
+  ) {
+    if (this.isEthereumInstalled) {
+      this.provider = new ethers.providers.Web3Provider(this.ethereum, "any");
+      this.ethereum.on("accountsChanged", (accounts: string[]) =>
+        this.onAccountsChanged(accounts)
+      );
+      this.provider
+        .listAccounts()
+        .then((accounts) => this.onAccountsChanged(accounts));
+      this.ethereum.on("chainChanged", (chainId: string) =>
+        this.onChainChanged(chainId)
+      );
+      this.provider.getNetwork().then((network) => (this.network = network));
+    }
+  }
+
+  protected getBackendUrl(path: string): string {
+    return this.backendUrlProvider.getBackendUrl(path);
+  }
+
+  protected onAccountsChanged(accounts: string[]) {
+    console.log("onAccountsChanged", accounts);
+    var account: string | null;
+    if (accounts === undefined || accounts.length === 0) {
+      account = null;
+    } else {
+      account = accounts[0];
+      if (accounts.length > 1) {
+        console.warn(
+          `More than one account connected: ${accounts}. '${account}' will be used`
+        );
+      }
+    }
+    this.account = account;
+  }
+
+  protected onChainChanged(chainId: string) {
+    console.log("onChainChanged", chainId);
+    this.provider?.getNetwork().then((network) => (this.network = network));
+  }
+
+  protected async getSigner() {
+    await this.requestAccount();
+    const signer = this.provider?.getSigner();
+    return signer;
+  }
+
+  protected generateNonce = async () => {
+    let nonce = await this.httpClient
+      .get<Nonce>(this.getBackendUrl("/metamask/generatenonce"))
+      .pipe()
+      .toPromise();
     return nonce;
   };
 
-  signMessage = async (message:string) => {
-    try {
-      await window.ethereum.request({ method: "eth_requestAccounts" });
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
-      const signature = await signer.signMessage(message);
-      const address = await signer.getAddress();
-
-      return { signature: signature, address: address}; 
-    } catch (err) {
-      console.log("Unable to sign: " + err);
-      return null;
-    }
-  };
-
-  verifyMessage = async (message:string, address:string, signature:string) => {
+  protected verifyMessage = async (
+    message: string,
+    address: string,
+    signature: string
+  ) => {
     let params = new HttpParams();
-    params = params.append('message', message);
-    params = params.append('address', address);    
-    params = params.append('signature', signature);
+    params = params.append("message", message);
+    params = params.append("address", address);
+    params = params.append("signature", signature);
 
-    const options = { params: params  };
-    let verifyMessageResponse = await this.httpClient.get<any>(this.apiURL + '/metamask/verify/message', options).toPromise();
-    return verifyMessageResponse
+    const options = { params: params };
+    let verifyMessageResponse = await this.httpClient
+      .get<VerificationResponse>(
+        this.getBackendUrl("/metamask/verify/message"),
+        options
+      )
+      .toPromise();
+    return verifyMessageResponse;
   };
 
-  sendTransaction = async (isProd:boolean, fromAddress:string, toAdress:string, amountETH:number) => {
-    try {
-      const networkVersion = window.ethereum.networkVersion;
-      if (isProd && networkVersion !=1)
-      {
-        throw "Network should be Ethereum mainnet";
+  requestAccount = async () => {
+    return this.provider?.send("eth_requestAccounts", []).then((_) => {
+      if (this.account !== undefined) {
+        return this.account;
+      } else {
+        throw Error("No account to connect");
       }
-     
-      if (!isProd && networkVersion==1)
-      {
-        throw "Network should be a testnet";
+    });
+  };
+
+  requestLogin = async () => {
+    this.authStorage.set(undefined);
+
+    const signer = await this.getSigner();
+    const res = await this.generateNonce();
+    const nonce = res.nonce;
+
+    console.log("Message to be be signed is: ", nonce);
+
+    if (nonce === undefined) {
+      throw Error("Could not generate nonce!");
+    } else {
+      const signature = await signer?.signMessage(nonce);
+      if (signature === undefined) {
+        throw Error("Could not sign message!");
+      } else {
+        const address = await signer?.getAddress();
+
+        if (address === undefined) {
+          throw Error("Could not get address!");
+        } else {
+          const res = await this.verifyMessage(nonce, address, signature);
+          if (res.valid === true) {
+            console.log(`Authenticated ${this.account}`);
+            if (this.account !== undefined) {
+              this.authStorage.set(res.payload ?? null);
+              return this.account;
+            } else {
+              throw Error("No account to login to");
+            }
+          } else {
+            throw new Error("Signature invalid");
+          }
+        }
       }
-
-      const amountWEIDec = amountETH * Math.pow(10, 18); //Convert from ETH to WEI 
-      const amountWEIHex = amountWEIDec.toString(16); //Convert from DEC to HEX
-
-      const transactionParameters = {
-        nonce: '0x00', // ignored by MetaMask
-        //gasPrice: '0x09184e72a000', // customizable by user during MetaMask confirmation.
-        //gas: '0x2710', // customizable by user during MetaMask confirmation.
-        to: toAdress, // Required except during contract publications.
-        from: fromAddress, // must match user's active address.
-        value: amountWEIHex, 
-        data:
-          '0x7f7465737432000000000000000000000000000000000000000000000000000000600057', // Optional, but used for defining smart contract creation and interaction.
-        chainId: '0x3', // Used to prevent transaction reuse across blockchains. Auto-filled by MetaMask.
-      };
-
-       const txHash = await window.ethereum.request({
-        method: 'eth_sendTransaction',
-        params: [transactionParameters],
-      });
-
-      return txHash; 
-    } catch (err) {
-      console.log("Unable to send transaction: " + err);
     }
   };
 
-  checkTransactionConfirmation = async (txhash:string) => {
-    const receipt = await window.ethereum.request({method:'eth_getTransactionReceipt', params:[txhash]})
-    return receipt;
-  }
+  logout = async () => {
+    this.authStorage.set(undefined);
+  };
 
-  checkTransactionConfirmationFromBackend = async (txhash:string) => {
+  requestSendTransaction = async (
+    isProd: boolean,
+    toAdress: string,
+    amountETH: string
+  ) => {
+    const networkVersion = this.network?.chainId;
+    if (isProd && networkVersion !== 1) {
+      throw Error("Network should be Ethereum mainnet");
+    }
+
+    if (!isProd && networkVersion === 1) {
+      throw Error("Network should be a testnet");
+    }
+
+    const signer = await this.getSigner();
+    const tx = await signer?.sendTransaction({
+      to: toAdress,
+      value: ethers.utils.parseEther(amountETH).toHexString(),
+    });
+
+    if (tx === undefined) {
+      throw Error("Could not send transaction");
+    } else {
+      return tx?.hash;
+    }
+  };
+
+  checkTransactionConfirmation = async (txHash: string) => {
+    const receipt = await this.provider?.getTransactionReceipt(txHash);
+    return receipt;
+  };
+
+  checkTransactionConfirmationFromBackend = async (_txhash: string) => {
     const receipt = null;
     return receipt;
-  }
+  };
 
+  ngOnDestroy(): void {
+    console.log("ngOnDestroy");
+    this.provider?.removeAllListeners();
+  }
 }

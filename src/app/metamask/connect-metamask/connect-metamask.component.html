@@ -1,0 +1,9 @@
+<ng-container *ngIf="isConnected$ | async; else connect">
+    <p>Connected account: <b>{{ account$ | async }}</b></p>
+</ng-container>
+<ng-template #connect>
+    <form (ngSubmit)="onConnect()">
+        <button class="button" type="submit">Connect to MetaMask wallet</button>
+    </form>
+    <div class="error">{{ error$ | async}}</div>
+</ng-template>

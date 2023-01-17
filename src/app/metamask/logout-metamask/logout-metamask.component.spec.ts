@@ -8,8 +8,9 @@ describe('LogoutMetamaskComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      declarations: [ LogoutMetamaskComponent ]
-    })
+    declarations: [LogoutMetamaskComponent],
+    teardown: { destroyAfterEach: false }
+})
     .compileComponents();
   });
 

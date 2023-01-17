@@ -8,8 +8,9 @@ describe('CheckTransactionMetamaskComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      declarations: [ CheckTransactionMetamaskComponent ]
-    })
+    declarations: [CheckTransactionMetamaskComponent],
+    teardown: { destroyAfterEach: false }
+})
     .compileComponents();
   });
 

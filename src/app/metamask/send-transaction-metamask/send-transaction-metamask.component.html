@@ -1,9 +1,21 @@
-<div *ngIf="this.metaMaskService.getNetworkVersion() != 1">
-  <form (ngSubmit)="onSendTransaction()">
-    <button class="button" type="submit">Send {{ amountETH }} ETH</button>
-  </form>
-</div>
+<ng-container *ngIf="(networkId$ | async) != 1; else testnet ">
+  <div>
+    <form (ngSubmit)="onSendTransaction()" [formGroup]="form">
+      <label>ETH Amount:
+        <input formControlName="amount" class="form-control" type="number" />
+      </label>
+      <label>To:
+        <input formControlName="toAddress" class="form-control" type="text" />
+      </label>
+      <button class="button" type="submit" [disabled]="formInvalid">Send</button>
+    </form>
+  </div>
+  <div class="success">{{ success$ | async}}</div>
+  <div class="error">{{ error$ | async}}</div>
+</ng-container>
 
-<div *ngIf="this.metaMaskService.getNetworkVersion() == 1">
-  <span>Use a testnet to send transaction</span>
-</div>
+<ng-template #testnet>
+  <div *ngIf="(networkId$ | async) === 1">
+    <span>Use a testnet to send transaction</span>
+  </div>
+</ng-template>

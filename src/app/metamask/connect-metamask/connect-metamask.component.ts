@@ -1,24 +1,22 @@
-import { ChangeDetectorRef, Component, OnDestroy } from "@angular/core";
+import { ChangeDetectorRef, Component, OnDestroy, OnInit } from "@angular/core";
 import { BehaviorSubject, Subscription } from "rxjs";
 import { MetaMaskService } from "../metamask.service";
 
-declare var window: any;
-
 @Component({
-  selector: "app-login-metamask",
-  templateUrl: "./login-metamask.component.html",
-  styleUrls: ["./login-metamask.component.css"],
+  selector: "app-connect-metamask",
+  templateUrl: "./connect-metamask.component.html",
+  styleUrls: ["./connect-metamask.component.css"],
 })
-export class LoginMetaMaskComponent implements OnDestroy {
+export class ConnectMetamaskComponent implements OnInit, OnDestroy {
   protected subscriptions = new Subscription();
   protected error$ = new BehaviorSubject<string | undefined>(undefined);
 
-  get isConnected$() {
-    return this.metaMaskService.isConnected$;
+  get account$() {
+    return this.metaMaskService.account$;
   }
 
-  get isAuthenticated$() {
-    return this.metaMaskService.isAuthenticated$;
+  get isConnected$() {
+    return this.metaMaskService.isConnected$;
   }
 
   constructor(
@@ -29,7 +27,7 @@ export class LoginMetaMaskComponent implements OnDestroy {
   ngOnInit(): void {
     this.changeDetectorRef.detectChanges();
     this.subscriptions.add(
-      this.isAuthenticated$.subscribe((_) => {
+      this.account$.subscribe((_) => {
         this.changeDetectorRef.detectChanges();
       })
     );
@@ -40,12 +38,12 @@ export class LoginMetaMaskComponent implements OnDestroy {
     );
   }
 
-  onLogin(): void {
+  onConnect(): void {
     this.error$.next(undefined);
     this.metaMaskService
-      .requestLogin()
-      .then((account) => console.log(`Login for '${account}' succeeded`))
-      .catch((err) => this.error$.next(`Login failed ${err.message}`));
+      .requestAccount()
+      .then((account) => console.log(`Connection to '${account} succeeded`))
+      .catch((err) => this.error$.next(`Connection failed ${err.message}`));
   }
 
   ngOnDestroy() {

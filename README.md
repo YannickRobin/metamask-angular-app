@@ -2,10 +2,12 @@
 
 ## Local setup guide
 After cloning the repo, install the application and start Angular:
-```
+
+```bash
 cd metamask-angular-app
-npm install
-ng serve
+nvm use
+yarn install
+yarn start
 ```
 
 ## Demo
@@ -20,12 +22,12 @@ cd metamask-angular-app
 ```
 - Build **metamask-angular-app**
 ```
-npm run build
+yarn build
 ```
 - Login to BTP
 ```
-cf api https://api.cf.eu20.hana.ondemand.com
-cf login --sso
+yarn cf api https://api.cf.eu20.hana.ondemand.com
+yarn cf login --sso
 ```
 - Select your target organisation and space
 ```
@@ -45,7 +47,7 @@ space:          dev
 ```
 - Push the application (this will create the route, deploy and start the application)
 ```
-npm run deploy
+yarn deploy
 ```
 - Wait for **metamask-angular-app** to start
 ```

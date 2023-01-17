@@ -2,33 +2,30 @@
 <div>
 
   <div class="logoMetamaskSvg">
-    <img src="https://raw.githubusercontent.com/MetaMask/brand-resources/master/SVG/metamask-fox-wordmark-horizontal.svg" width="180"/>
+    <img
+      src="https://raw.githubusercontent.com/MetaMask/brand-resources/master/SVG/metamask-fox-wordmark-horizontal.svg"
+      width="180" />
   </div>
 
-  <div *ngIf="!this.metaMaskService.getIsMetaMaskInstalled()">
-    <a class="" font-size="14px" href="https://chrome.google.com/webstore/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn">
+  <div *ngIf="!isMetaMask; else metamask">
+    <a class="" font-size="14px"
+      href="https://chrome.google.com/webstore/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn">
       <span>Download MetaMask Chrome extension</span>
     </a>
-  </div>  
-
-  <div *ngIf="this.metaMaskService.getIsMetaMaskInstalled() && !this.metaMaskService.getIsAuthenticatedWithMetaMask()">
-    <app-login-metamask></app-login-metamask>
   </div>
 
-  <div *ngIf="this.metaMaskService.getIsAuthenticatedWithMetaMask()">
-
-    <span>MetaMask address: </span>{{ this.metaMaskService.getMetaMaskAddress() }}
-
+  <ng-template #metamask>
+    <p>Network: <b>{{ (network$ | async)?.name }}</b><em>(id={{ (network$ | async)?.chainId }})</em></p>
+    <app-connect-metamask></app-connect-metamask>
+    <app-login-metamask></app-login-metamask>
     <app-logout-metamask></app-logout-metamask>
 
-    <app-send-transaction-metamask></app-send-transaction-metamask>
-    <app-check-transaction-metamask></app-check-transaction-metamask>
 
-  </div>
-  
-  <div>
-    <span style="color:red;">{{ this.metaMaskService.getErrorMessage() }}</span>
-  </div>
+    <div *ngIf="isAuthenticated$ | async">
+      <app-send-transaction-metamask></app-send-transaction-metamask>
+      <app-check-transaction-metamask></app-check-transaction-metamask>
+    </div>
+  </ng-template>
 
 
 </div>
